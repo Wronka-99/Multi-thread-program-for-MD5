@@ -24,9 +24,12 @@ char *wczytaj(char *z, int ile, FILE *plik);
      char tab_pom2[SIZE_MD5];
      char *tmp_wsk;
      char *tmp_wsk2;
+     char *znak="\0";
 
 
     //######################################
+
+
 
     //############## SPRAWDZENIE LICZBY ARGUMENTOW ############## 
      if(argc!=3)
@@ -34,6 +37,9 @@ char *wczytaj(char *z, int ile, FILE *plik);
          puts("Podano niewlasciwa liczbe argumentow.");
          puts("Poprawna liczba to dwa argumenty.");
      }
+    //######################################
+
+
 
     //############## PROBA OTWARCIA PLIKOW SLOWNIK I KODY MD5
      if((slownik=fopen(argv[1],"r"))==NULL)
@@ -47,15 +53,18 @@ char *wczytaj(char *z, int ile, FILE *plik);
         printf("Nie mozna otworzyc pliku %s\n",argv[2]);
         exit(EXIT_FAILURE);
      }
-
+    //######################################
 
  
 
+    //############## POBIERANIE LISTY HASEL MD5 ############## 
       for (int index = 0; index < L_HASEL_MD5; index++) 
     {
-        tmp_wsk=fgets (tab_hasla_MD5[index], SIZE_MD5, hasla_MD5);   // czytamy ze standardowego wejścia
+        tmp_wsk=fgets (tab_pom2, SIZE_MD5, hasla_MD5);   // czytamy ze standardowego wejścia
         
-        //printf("Dlugos kodu nr. %d ze md5 %ld \n",index, strlen(tab_hasla_MD5[index]));
+        tmp_wsk2=tab_pom2;
+        strncpy(tab_hasla_MD5[index],tmp_wsk2,SIZE_MD5);
+        strcpy(tab_hasla_MD5[index]+32,znak);
 
         if (tmp_wsk != NULL) 
         {      
@@ -65,8 +74,11 @@ char *wczytaj(char *z, int ile, FILE *plik);
         else
             printf ("\n%d blad odczytu\n", index);
     }
+    //######################################
 
 
+
+    //############## POBIERANIE LISTY SLOW ZE SLOWNIKA ############## 
       for (int index = 0; index < L_SLOW_SLOWNIK ; index++) 
     {
         tmp_wsk=fgets (tab_pom,DL_SLOWA,slownik);   // czytamy ze standardowego wejścia
@@ -84,14 +96,20 @@ char *wczytaj(char *z, int ile, FILE *plik);
         else
             printf ("\n%d blad odczytu\n", index);
     }
+    //######################################
+
+
 
     for(int index=0; index<L_HASEL_MD5; index++)
     {
-        printf("Kod nr:%d wyglada nastepujaco: %s ",index,tab_hasla_MD5[index]);
+        printf("Kod nr:%d wyglada nastepujaco: %s, dlugosc tego slowa to %ld. \n",index,tab_hasla_MD5[index], strlen(tab_hasla_MD5[index]));
     }
         
-    printf("Slowo ze slownika %s\n", tab_slownik[450]);
+    printf("Slowo ze slownika %s\n", tab_slownik[200]);
 
+
+
+    //############## CZYSZCZENIE PAMIECI I ZAMYKANIE PLIKOW ############## 
     fclose(slownik);
     fclose(hasla_MD5);
 
@@ -99,8 +117,7 @@ char *wczytaj(char *z, int ile, FILE *plik);
     {
        free(tab_slownik[i]); 
     }
-    
-    
+    //######################################
 
     return 0;
  }
