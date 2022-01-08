@@ -3,23 +3,17 @@
  #include <string.h>
  #include <openssl/evp.h>
  #include <pthread.h>
-#include <unistd.h>
+ #include <unistd.h>
+ #include <signal.h>
 
 #define SIZE_MD5 35
 #define L_HASEL_MD5 420
 #define L_SLOW_SLOWNIK 550
 #define DL_SLOWA 32
-
-
-#define NUM_THREADS  3
+#define NUM_THREADS  4
 #define TCOUNT 10
-#define COUNT_LIMIT 12
+#define COUNT_LIMIT 8
 
-
-//long int numer_slowa=0;
-int     count = 0;
-pthread_mutex_t count_mutex;
-pthread_cond_t count_threshold_cv;
 
 struct dane_wejsciowe
 {
@@ -34,13 +28,27 @@ struct dane_wyjsciowe
     char tab_slow_wyj[100][64];
 };
 
+int count=0;
+int licznik=0;
+pthread_mutex_t count_mutex;
+pthread_cond_t count_threshold_cv;
+pthread_t threads[4];
+pthread_attr_t attr;
+struct dane_wyjsciowe dane_wyj;
+struct dane_wejsciowe dane_wej;
 
+void sighandler(int signum);
 void *inc_count(void *t);
 void *watch_count(void *t);
 char *wczytaj(char *z, int ile, FILE *plik);
 void *watek_1(void *dane);
+void *watek_1(void *dane);
+void *watek_2(void *dane);
 
 
+
+
+//############## MAIN ############## 
 
  int main(int argc, char *argv[])
  {
@@ -56,19 +64,18 @@ void *watek_1(void *dane);
      char *tmp_wsk2;
      char *znak="\0";
 
-     struct dane_wejsciowe dane_wej;
-     struct dane_wyjsciowe dane_wyj;
+     
+    
 
 
      int i, rc; 
      long t1=1, t2=2, t3=3;
-     pthread_t threads[3];
-     pthread_attr_t attr;
+     
 
 
     //######################################
 
-
+    signal(SIGHUP, sighandler);
 
     //############## SPRAWDZENIE LICZBY ARGUMENTOW ############## 
      if(argc!=3)
@@ -142,6 +149,7 @@ void *watek_1(void *dane);
 
 
 
+    //############## WYPISYWANIE LISTY SLOW ZE SLOWNIKA I HASEL MD5 PO 10 ZEBY NIE BYLO ZA DUZO ############## 
     for(int index=L_HASEL_MD5-10; index<L_HASEL_MD5; index++)
     {
         printf("Kod nr:%d wyglada nastepujaco: %s, dlugosc tego slowa to %ld. \n",index,dane_wej.tab_MD5_wej[index], strlen(dane_wej.tab_MD5_wej[index]));
@@ -151,7 +159,7 @@ void *watek_1(void *dane);
     {
         printf("Slowo nr:%d wyglada nastepujaco: %s, dlugosc tego slowa to %ld. \n",index,dane_wej.tab_slow_wej[index], strlen(dane_wej.tab_slow_wej[index]));
     }
-    
+    //######################################
     
 
       /* Initialize mutex and condition variable objects */
@@ -163,7 +171,8 @@ void *watek_1(void *dane);
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
     pthread_create(&threads[0], &attr, watch_count, (void *)t1);
     pthread_create(&threads[1], &attr, inc_count, (void *)t2);
-    pthread_create(&threads[2], &attr, watek_1, (void *) &dane_wej);  
+    pthread_create(&threads[2], &attr, watek_1, (void *) &dane_wej);
+    pthread_create(&threads[3], &attr, watek_2, (void *) &dane_wej); 
 
 
 
@@ -176,6 +185,16 @@ void *watek_1(void *dane);
           NUM_THREADS, count);
 
 
+    
+
+    for(int i=0; i<licznik; i++)
+    {
+        printf("Wartosc licznika to: %d, slowo to: %s, a kod to: %s\n", i, dane_wyj.tab_slow_wyj[i],dane_wyj.tab_MD5_wyj[i] );
+    }
+
+    sleep(20000);
+
+
     //############## CZYSZCZENIE PAMIECI I ZAMYKANIE PLIKOW ############## 
     fclose(slownik);
     fclose(hasla_MD5);
@@ -186,6 +205,8 @@ void *watek_1(void *dane);
     pthread_cond_destroy(&count_threshold_cv);
     pthread_exit (NULL);
 
+    
+
     for(int i=0; i<L_SLOW_SLOWNIK;i++)
     {
        //free(tab_slownik[i]);
@@ -195,10 +216,11 @@ void *watek_1(void *dane);
 
     return 0;
  }
- 
+ //######################################################  
 
 
 
+//############## WCZYTYWANIE DANYCH Z POMINIECIEM ZNAKU NOWEJ LINII ############## 
  char *wczytaj(char *z, int ile, FILE *plik)
  {
      char *wynik;
@@ -217,6 +239,7 @@ void *watek_1(void *dane);
                 continue;
      }
  }
+//######################################
 
 
 
@@ -289,16 +312,47 @@ void *watek_1(void * dane)
     {
         pthread_mutex_lock(&count_mutex);
 
-         for(int index=L_HASEL_MD5-10; index<L_HASEL_MD5; index++)
+        puts("Watek pierwszy.");
+         for(int index=L_HASEL_MD5-2; index<L_HASEL_MD5; index++)
         {
             printf("Kod nr:%d wyglada nastepujaco: %s, dlugosc tego slowa to %ld. \n",index,(* info).tab_MD5_wej[index], strlen((*info).tab_MD5_wej[index]));
         }
+        
+        strncpy(dane_wyj.tab_MD5_wyj[licznik],(* info).tab_MD5_wej[licznik],SIZE_MD5);
+        licznik++;
 
-        for(int index=L_SLOW_SLOWNIK-10; index<L_SLOW_SLOWNIK; index++)
+        pthread_mutex_unlock(&count_mutex);
+
+        /* Do some work so threads can alternate on mutex lock */
+        sleep(1);
+    }
+    
+    pthread_exit(NULL);
+}
+
+
+
+
+void *watek_2(void * dane)
+{
+    int i;
+    struct dane_wejsciowe* info = (struct dane_wejsciowe*)dane;
+
+    for (i=0; i < TCOUNT; i++) 
+    {
+        pthread_mutex_lock(&count_mutex);
+
+        puts("Watek drugi.");
+       
+
+        for(int index=L_SLOW_SLOWNIK-3; index<L_SLOW_SLOWNIK; index++)
         {
              printf("Slowo nr:%d wyglada nastepujaco: %s, dlugosc tego slowa to %ld. \n",index,(* info).tab_slow_wej[index], strlen((*info).tab_slow_wej[index]));
         }
-   
+
+        strncpy(dane_wyj.tab_slow_wyj[licznik],(* info).tab_slow_wej[licznik],strlen((*info).tab_slow_wej[licznik]));
+        licznik++;
+
         pthread_mutex_unlock(&count_mutex);
 
         /* Do some work so threads can alternate on mutex lock */
@@ -308,6 +362,31 @@ void *watek_1(void * dane)
     pthread_exit(NULL);
 }
  
+
+
+
+void sighandler(int signum) 
+{
+   printf("Przechwycono sygnal %d, konczenie pracy.\n", signum);
+
+    for(int i=0; i<licznik; i++)
+    {
+        printf("Wartosc licznika to: %d, slowo to: %s, a kod to: %s\n", i, dane_wyj.tab_slow_wyj[i],dane_wyj.tab_MD5_wyj[i] );
+    }
+    
+    pthread_attr_destroy(&attr);
+    pthread_mutex_destroy(&count_mutex);
+    pthread_cond_destroy(&count_threshold_cv);
+    pthread_exit (NULL);
+
+    
+
+    for(int i=0; i<L_SLOW_SLOWNIK;i++)
+    {
+       free(dane_wej.tab_slow_wej[i]); 
+    }
+   exit(1);
+}
  /*#include <stdio.h>
  #include <string.h>
  #include <openssl/evp.h>
