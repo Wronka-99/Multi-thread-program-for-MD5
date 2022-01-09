@@ -28,6 +28,7 @@ struct dane_wyjsciowe
     char tab_slow_wyj[100][64];
 };
 
+int praca=1;
 int count=0;
 int licznik=0;
 pthread_mutex_t count_mutex;
@@ -171,7 +172,7 @@ void *watek_2(void *dane);
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
     pthread_create(&threads[0], &attr, watch_count, (void *)t1);
     pthread_create(&threads[1], &attr, inc_count, (void *)t2);
-    pthread_create(&threads[2], &attr, watek_1, (void *) &dane_wej);
+    //pthread_create(&threads[2], &attr, watek_1, (void *) &dane_wej);
     pthread_create(&threads[3], &attr, watek_2, (void *) &dane_wej); 
 
 
@@ -192,7 +193,7 @@ void *watek_2(void *dane);
         printf("Wartosc licznika to: %d, slowo to: %s, a kod to: %s\n", i, dane_wyj.tab_slow_wyj[i],dane_wyj.tab_MD5_wyj[i] );
     }
 
-    sleep(20000);
+    //sleep(20000);
 
 
     //############## CZYSZCZENIE PAMIECI I ZAMYKANIE PLIKOW ############## 
@@ -335,30 +336,54 @@ void *watek_1(void * dane)
 
 void *watek_2(void * dane)
 {
-    int i;
+    
     struct dane_wejsciowe* info = (struct dane_wejsciowe*)dane;
 
-    for (i=0; i < TCOUNT; i++) 
+
+    EVP_MD_CTX *mdctx; //tworzenie struktury ktora zawiera rodzaj kodowania
+    const EVP_MD *md;  //przechowuje skrot kodowania MD5 MD4 i to co zawiera openssl
+    unsigned char md_value[32];
+    unsigned int md_len;
+    unsigned int index=0;
+    char znak_pom;
+    char tab_pom[3];
+    char tab_pom2[33];
+
+    md = EVP_get_digestbyname("MD5");
+    pthread_mutex_lock(&count_mutex);
+     
+    while(praca)
     {
-        pthread_mutex_lock(&count_mutex);
+    
 
         puts("Watek drugi.");
+        mdctx = EVP_MD_CTX_new(); 
        
+        EVP_DigestInit_ex(mdctx, md, NULL);//ustawia kontekst kodowania w strukturze mdctx, na MD5 lub inne dostepne w openssl
+        EVP_DigestUpdate(mdctx, (* info).tab_slow_wej[licznik], strlen((* info).tab_slow_wej[licznik]));// tutaj odbywa się kodowanie naszego tekstu do wybranego klucza (MD5)
+        EVP_DigestFinal_ex(mdctx, md_value, &md_len);//pobiera wartosc mdctx i zapisuje do wartosci md_value, md_len tutaj zostaje zapisana liczba bajtow, ktore zostaly zapisane 
+        EVP_MD_CTX_free(mdctx);//zwalnia pamiec zajmowana przez strukture mdctx
+        strncpy(dane_wyj.tab_slow_wyj[licznik],(* info).tab_slow_wej[licznik],strlen((* info).tab_slow_wej[licznik]));
 
-        for(int index=L_SLOW_SLOWNIK-3; index<L_SLOW_SLOWNIK; index++)
+        
+
+        for (int i = 0; i < md_len; i++)
         {
-             printf("Slowo nr:%d wyglada nastepujaco: %s, dlugosc tego slowa to %ld. \n",index,(* info).tab_slow_wej[index], strlen((*info).tab_slow_wej[index]));
+            znak_pom=(char)md_value[i];
+            sprintf(tab_pom,"%02X ",znak_pom & 0xff);
+            strcpy(tab_pom2+2*i,tab_pom);
         }
 
-        strncpy(dane_wyj.tab_slow_wyj[licznik],(* info).tab_slow_wej[licznik],strlen((*info).tab_slow_wej[licznik]));
+        strncpy(dane_wyj.tab_MD5_wyj[licznik],tab_pom2, strlen(tab_pom2));
+        printf(" Wartosci MD5 po konwersji do wyjsciowych danych: %s \n", dane_wyj.tab_MD5_wyj[licznik]);
+        printf("\n");
+
         licznik++;
+        index++;
 
         pthread_mutex_unlock(&count_mutex);
-
-        /* Do some work so threads can alternate on mutex lock */
         sleep(1);
     }
-    
     pthread_exit(NULL);
 }
  
@@ -368,12 +393,14 @@ void *watek_2(void * dane)
 void sighandler(int signum) 
 {
    printf("Przechwycono sygnal %d, konczenie pracy.\n", signum);
+   praca=0;
 
     for(int i=0; i<licznik; i++)
     {
         printf("Wartosc licznika to: %d, slowo to: %s, a kod to: %s\n", i, dane_wyj.tab_slow_wyj[i],dane_wyj.tab_MD5_wyj[i] );
     }
     
+
     pthread_attr_destroy(&attr);
     pthread_mutex_destroy(&count_mutex);
     pthread_cond_destroy(&count_threshold_cv);
