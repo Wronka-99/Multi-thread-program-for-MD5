@@ -6,12 +6,13 @@
  #include <unistd.h>
  #include <signal.h>
  #include <time.h>
+ #include <ctype.h>
 
 #define SIZE_MD5 35
-#define L_HASEL_MD5 433
-#define L_SLOW_SLOWNIK 10000
+#define L_HASEL_MD5 441
+#define L_SLOW_SLOWNIK 1000
 #define DL_SLOWA 32
-#define NUM_THREADS  4
+#define NUM_THREADS  6
 
 
 struct dane_wejsciowe
@@ -19,7 +20,7 @@ struct dane_wejsciowe
     char tab_MD5_wej[L_HASEL_MD5][SIZE_MD5];
     char* tab_slow_wej[L_SLOW_SLOWNIK];
 
-};
+}dane_wej;
 
 struct dane_wyjsciowe
 {
@@ -36,16 +37,15 @@ int praca=1;
 int count=0;
 char tab_prawdy[L_SLOW_SLOWNIK]={0};
 pthread_mutex_t mutex_1;
-
 pthread_t threads[NUM_THREADS];
-pthread_attr_t attr;
-//struct dane_wyjsciowe dane_wyj;
-struct dane_wejsciowe dane_wej;
 
 void sighandler(int signum);
-void *watek_1(void *dane);
-void *watek_2(void *dane);
-void *watek_3(void *dane);
+void koduj_MD5(char *slowo_pobrane, char kod[33]);
+void *watek_1();
+void *watek_2();
+void *watek_3();
+void *watek_4();
+void *watek_5();
 void *konsument(void *dane);
 
 
@@ -138,11 +138,12 @@ void *konsument(void *dane);
     pthread_cond_init (&dane_wyj.cond, NULL);
 
        /* For portability, explicitly create threads in a joinable state */
-    pthread_create(&threads[0], &attr, konsument, (void *) &dane_wyj); 
-    pthread_create(&threads[1], &attr, watek_1, (void *) &dane_wej);
-    pthread_create(&threads[2], &attr, watek_2, (void *) &dane_wej); 
-    pthread_create(&threads[3], &attr, watek_3, (void *) &dane_wej); 
-
+    pthread_create(&threads[0], NULL, konsument, (void *) &dane_wyj); 
+    pthread_create(&threads[1], NULL, watek_1, NULL);
+    pthread_create(&threads[2], NULL, watek_2, NULL); 
+    pthread_create(&threads[3], NULL, watek_3, NULL); 
+    pthread_create(&threads[4], NULL, watek_4, NULL);
+    pthread_create(&threads[5], NULL, watek_5, NULL); 
 
     //############## CZYSZCZENIE PAMIECI I ZAMYKANIE PLIKOW ############## 
     fclose(slownik);
@@ -166,63 +167,65 @@ void *konsument(void *dane);
  //######################################################  
 
 
- 
-
-
-void *watek_1(void * dane)
-{
-  
-    struct dane_wejsciowe* info = (struct dane_wejsciowe*)dane;
-
+ void koduj_MD5(char *slowo_pobrane, char kod[33])
+ {
     EVP_MD_CTX *mdctx; //tworzenie struktury ktora zawiera rodzaj kodowania
     const EVP_MD *md;  //przechowuje skrot kodowania MD5 MD4 i to co zawiera openssl
     unsigned char md_value[32];
     unsigned int md_len;
-    unsigned int index=0;
+    char znak_pom;
+    char tab_pom[3];
+    md = EVP_get_digestbyname("MD5");
+
+     mdctx = EVP_MD_CTX_new(); 
+    EVP_DigestInit_ex(mdctx, md, NULL);//ustawia kontekst kodowania w strukturze mdctx, na MD5 lub inne dostepne w openssl
+    EVP_DigestUpdate(mdctx, slowo_pobrane, strlen(slowo_pobrane));// tutaj odbywa się kodowanie naszego tekstu do wybranego klucza (MD5)
+    EVP_DigestFinal_ex(mdctx, md_value, &md_len);//pobiera wartosc mdctx i zapisuje do wartosci md_value, md_len tutaj zostaje zapisana liczba bajtow, ktore zostaly zapisane 
+    EVP_MD_CTX_free(mdctx);//zwalnia pamiec zajmowana przez strukture mdctx
+
+    for (int i = 0; i < md_len; i++)
+    {
+        znak_pom=(char)md_value[i];
+        sprintf(kod+2*i,"%02X",znak_pom & 0xff);
+    }
+ }
+
+
+void *watek_1()
+{
+
     char znak_pom;
     char tab_pom[3];
     char kod_md5[33];
     char *nowe_slowo;
     int sprawdzenie=1;
 
-    md = EVP_get_digestbyname("MD5");
+    
     
     while(praca)
     {
-       // puts("Watek pierwszy.");
-        
         for(int a=0; a<L_SLOW_SLOWNIK; a++)
         { 
             for(int c=0; c<1000; c++)
             {
                 if(c<10)
-                    nowe_slowo=(char*)calloc(strlen((* info).tab_slow_wej[a])+1, sizeof(char));
+                    nowe_slowo=(char*)calloc(strlen(dane_wej.tab_slow_wej[a])+2, sizeof(char));
                 else if(c<100)
-                    nowe_slowo=(char*)calloc(strlen((* info).tab_slow_wej[a])+2, sizeof(char));
+                    nowe_slowo=(char*)calloc(strlen(dane_wej.tab_slow_wej[a])+3, sizeof(char));
                 else
-                    nowe_slowo=(char*)calloc(strlen((* info).tab_slow_wej[a])+3, sizeof(char));
+                    nowe_slowo=(char*)calloc(strlen(dane_wej.tab_slow_wej[a])+4, sizeof(char));
 
                 sprintf(nowe_slowo,"%d",c);
-                strcat(nowe_slowo, (* info).tab_slow_wej[a]);
+                strcat(nowe_slowo, dane_wej.tab_slow_wej[a]);
 
-                mdctx = EVP_MD_CTX_new(); 
-                EVP_DigestInit_ex(mdctx, md, NULL);//ustawia kontekst kodowania w strukturze mdctx, na MD5 lub inne dostepne w openssl
-                EVP_DigestUpdate(mdctx, nowe_slowo, strlen(nowe_slowo));// tutaj odbywa się kodowanie naszego tekstu do wybranego klucza (MD5)
-                EVP_DigestFinal_ex(mdctx, md_value, &md_len);//pobiera wartosc mdctx i zapisuje do wartosci md_value, md_len tutaj zostaje zapisana liczba bajtow, ktore zostaly zapisane 
-                EVP_MD_CTX_free(mdctx);//zwalnia pamiec zajmowana przez strukture mdctx
-
-                for (int i = 0; i < md_len; i++)
-                {
-                    znak_pom=(char)md_value[i];
-                    sprintf(kod_md5+2*i,"%02X",znak_pom & 0xff);
-                }
+                koduj_MD5(nowe_slowo, kod_md5);
                 
                 //printf("Wygenerowane slowo %s, kod to: %s .\n",nowe_slowo,kod_md5);
 
                 for(int b=0; b<L_HASEL_MD5; b++)
                 {
                     
-                    sprawdzenie=strncmp(kod_md5, (* info).tab_MD5_wej[b],32);//ZWRACA 0 JESLI LANCUCHY SA TAKIE SAME
+                    sprawdzenie=strncmp(kod_md5, dane_wej.tab_MD5_wej[b],32);//ZWRACA 0 JESLI LANCUCHY SA TAKIE SAME
 
                      if(sprawdzenie==0&&tab_prawdy[a]==0)
                     {   
@@ -240,8 +243,7 @@ void *watek_1(void * dane)
                         pthread_mutex_unlock(&dane_wyj.mutex);//KONIEC SEKCJI KRYTYCZNEJ
                         sleep(1);
                         break;
-                    }
-                    
+                    }  
                 }
                 free(nowe_slowo);
             }
@@ -253,62 +255,50 @@ void *watek_1(void * dane)
 
 
 
-void *watek_2(void * dane)
+void *watek_2()
 {
-    
-    struct dane_wejsciowe* info = (struct dane_wejsciowe*)dane;
-
-    EVP_MD_CTX *mdctx; //tworzenie struktury ktora zawiera rodzaj kodowania
-    const EVP_MD *md;  //przechowuje skrot kodowania MD5 MD4 i to co zawiera openssl
-    unsigned char md_value[32];
-    unsigned int md_len;
-    unsigned int index=0;
+   
     char znak_pom;
     char tab_pom[3];
     char kod_md5[33];
     int sprawdzenie=1;
-
-    md = EVP_get_digestbyname("MD5");
+    char *nowe_slowo;
+    
     
      
     while(praca)
     {
-        //puts("Watek drugi.");
-        
         for(int a=0; a<L_SLOW_SLOWNIK; a++)
-        {
+        {   
             
-            mdctx = EVP_MD_CTX_new(); 
-            EVP_DigestInit_ex(mdctx, md, NULL);//ustawia kontekst kodowania w strukturze mdctx, na MD5 lub inne dostepne w openssl
-            EVP_DigestUpdate(mdctx, (* info).tab_slow_wej[a], strlen((* info).tab_slow_wej[a]));// tutaj odbywa się kodowanie naszego tekstu do wybranego klucza (MD5)
-            EVP_DigestFinal_ex(mdctx, md_value, &md_len);//pobiera wartosc mdctx i zapisuje do wartosci md_value, md_len tutaj zostaje zapisana liczba bajtow, ktore zostaly zapisane 
-            EVP_MD_CTX_free(mdctx);//zwalnia pamiec zajmowana przez strukture mdctx
+                nowe_slowo=(char*)calloc(strlen(dane_wej.tab_slow_wej[a])+3, sizeof(char));
 
-            for (int i = 0; i < md_len; i++)
-            {
-                znak_pom=(char)md_value[i];
-                sprintf(kod_md5+2*i,"%02X",znak_pom & 0xff);
-            }
+                
+                strcpy(nowe_slowo, dane_wej.tab_slow_wej[a]);
+
+                koduj_MD5(nowe_slowo, kod_md5);
             
-
             for(int b=0; b<L_HASEL_MD5; b++)
             {
                  
-                sprawdzenie=strncmp(kod_md5, (* info).tab_MD5_wej[b],32);
+                sprawdzenie=strncmp(kod_md5, dane_wej.tab_MD5_wej[b],32);
 
                if(sprawdzenie==0&&tab_prawdy[a]==0)
                 {   
-                    pthread_mutex_lock(&dane_wyj.mutex); 
-                    strncpy(dane_wyj.tab_slow_wyj[dane_wyj.licznik],(* info).tab_slow_wej[a],strlen((* info).tab_slow_wej[a]));
-                    strncpy(dane_wyj.tab_MD5_wyj[dane_wyj.licznik],kod_md5, strlen(kod_md5));
-                    //printf("Znaleziono slowo: %s i kod: %s .\n",dane_wyj.tab_slow_wyj[dane_wyj.licznik], dane_wyj.tab_MD5_wyj[dane_wyj.licznik]); 
-                     puts("Watek drugi wykryl slowo.");
-                    dane_wyj.nready++;
-                    tab_prawdy[a]=1;
-                    pthread_cond_signal(&dane_wyj.cond);
-                    pthread_mutex_unlock(&dane_wyj.mutex);
-                    sleep(1);
-                    break;
+                        pthread_mutex_lock(&dane_wyj.mutex); //POCZATEK SEKCJI KRYTYCZNEJ
+                        strncpy(dane_wyj.tab_slow_wyj[dane_wyj.licznik],nowe_slowo,strlen(nowe_slowo));
+                        strncpy(dane_wyj.tab_MD5_wyj[dane_wyj.licznik],kod_md5, strlen(kod_md5));
+                        //printf("Znaleziono slowo: %s i kod: %s .\n",dane_wyj.tab_slow_wyj[dane_wyj.licznik], dane_wyj.tab_MD5_wyj[dane_wyj.licznik]); 
+                        puts("Watek drugi wykryl slowo.");
+                        dane_wyj.nready++;
+                        
+                        tab_prawdy[a]=1;
+                        
+                        
+                        pthread_cond_signal(&dane_wyj.cond);
+                        pthread_mutex_unlock(&dane_wyj.mutex);//KONIEC SEKCJI KRYTYCZNEJ
+                        sleep(1);
+                        break;
                 }
                 
             }
@@ -317,62 +307,42 @@ void *watek_2(void * dane)
     pthread_exit(NULL);
 }
  
-void *watek_3(void * dane)
+void *watek_3()
 {
-  
-    struct dane_wejsciowe* info = (struct dane_wejsciowe*)dane;
 
-    EVP_MD_CTX *mdctx; //tworzenie struktury ktora zawiera rodzaj kodowania
-    const EVP_MD *md;  //przechowuje skrot kodowania MD5 MD4 i to co zawiera openssl
-    unsigned char md_value[32];
-    unsigned int md_len;
-    unsigned int index=0;
     char znak_pom;
     char tab_pom[4];
     char kod_md5[33];
     char *nowe_slowo;
     int sprawdzenie=1;
 
-    md = EVP_get_digestbyname("MD5");
     
     while(praca)
-    {
-        //puts("Watek trzeci.");
-        
+    {  
         for(int a=0; a<L_SLOW_SLOWNIK; a++)
         { 
             for(int c=0; c<1000; c++)
             {
                 if(c<10)
-                    nowe_slowo=(char*)calloc(strlen((* info).tab_slow_wej[a])+1, sizeof(char));
+                    nowe_slowo=(char*)calloc(strlen(dane_wej.tab_slow_wej[a])+2, sizeof(char));
                 else if(c<100)
-                    nowe_slowo=(char*)calloc(strlen((* info).tab_slow_wej[a])+2, sizeof(char));
+                    nowe_slowo=(char*)calloc(strlen(dane_wej.tab_slow_wej[a])+3, sizeof(char));
                 else
-                    nowe_slowo=(char*)calloc(strlen((* info).tab_slow_wej[a])+3, sizeof(char));
+                    nowe_slowo=(char*)calloc(strlen(dane_wej.tab_slow_wej[a])+4, sizeof(char));
 
-                sprintf(nowe_slowo,"%s",(* info).tab_slow_wej[a]);
+                sprintf(nowe_slowo,"%s",dane_wej.tab_slow_wej[a]);
                 
                 sprintf(tab_pom,"%d",c);
                 strcat(nowe_slowo,tab_pom);
 
-                mdctx = EVP_MD_CTX_new(); 
-                EVP_DigestInit_ex(mdctx, md, NULL);//ustawia kontekst kodowania w strukturze mdctx, na MD5 lub inne dostepne w openssl
-                EVP_DigestUpdate(mdctx, nowe_slowo, strlen(nowe_slowo));// tutaj odbywa się kodowanie naszego tekstu do wybranego klucza (MD5)
-                EVP_DigestFinal_ex(mdctx, md_value, &md_len);//pobiera wartosc mdctx i zapisuje do wartosci md_value, md_len tutaj zostaje zapisana liczba bajtow, ktore zostaly zapisane 
-                EVP_MD_CTX_free(mdctx);//zwalnia pamiec zajmowana przez strukture mdctx
-
-                for (int i = 0; i < md_len; i++)
-                {
-                    znak_pom=(char)md_value[i];
-                    sprintf(kod_md5+2*i,"%02X",znak_pom & 0xff);
-                }
-                
+               
+                koduj_MD5(nowe_slowo, kod_md5);
                 //printf("Wygenerowane slowo %s, kod to: %s .\n",nowe_slowo,kod_md5);
 
                 for(int b=0; b<L_HASEL_MD5; b++)
                 {
                     
-                    sprawdzenie=strncmp(kod_md5, (* info).tab_MD5_wej[b],32);//ZWRACA 0 JESLI LANCUCHY SA TAKIE SAME
+                    sprawdzenie=strncmp(kod_md5, dane_wej.tab_MD5_wej[b],32);//ZWRACA 0 JESLI LANCUCHY SA TAKIE SAME
 
                      if(sprawdzenie==0&&tab_prawdy[a]==0)
                     {   
@@ -390,8 +360,7 @@ void *watek_3(void * dane)
                         pthread_mutex_unlock(&dane_wyj.mutex);//KONIEC SEKCJI KRYTYCZNEJ
                         sleep(1);
                         break;
-                    }
-                    
+                    }  
                 }
                 free(nowe_slowo);
             }
@@ -399,6 +368,140 @@ void *watek_3(void * dane)
     }
     pthread_exit(NULL);       
 }
+
+
+void *watek_4()
+{
+
+    char znak_pom;
+    char tab_pom[4];
+    char kod_md5[33];
+    char *nowe_slowo;
+    int sprawdzenie=1;
+
+    
+    while(praca)
+    {  
+        for(int a=0; a<L_SLOW_SLOWNIK; a++)
+        { 
+                nowe_slowo=(char*)calloc(strlen(dane_wej.tab_slow_wej[a])+1, sizeof(char));
+                sprintf(nowe_slowo,"%s",dane_wej.tab_slow_wej[a]);
+                
+                strcat(nowe_slowo,tab_pom);
+
+                for(int c=0; c<strlen(nowe_slowo); c++)
+                {  
+                    nowe_slowo[c]=toupper(nowe_slowo[c]);
+                }
+
+               
+                koduj_MD5(nowe_slowo, kod_md5);
+                //printf("Wygenerowane slowo %s, kod to: %s .\n",nowe_slowo,kod_md5);
+                
+                for(int b=0; b<L_HASEL_MD5; b++)
+                {
+                    
+                    sprawdzenie=strncmp(kod_md5, dane_wej.tab_MD5_wej[b],32);//ZWRACA 0 JESLI LANCUCHY SA TAKIE SAME
+
+                     if(sprawdzenie==0&&tab_prawdy[a]==0)
+                    {   
+                        pthread_mutex_lock(&dane_wyj.mutex); //POCZATEK SEKCJI KRYTYCZNEJ
+                        strncpy(dane_wyj.tab_slow_wyj[dane_wyj.licznik],nowe_slowo,strlen(nowe_slowo));
+                        strncpy(dane_wyj.tab_MD5_wyj[dane_wyj.licznik],kod_md5, strlen(kod_md5));
+                        //printf("Znaleziono slowo: %s i kod: %s .\n",dane_wyj.tab_slow_wyj[dane_wyj.licznik], dane_wyj.tab_MD5_wyj[dane_wyj.licznik]); 
+                        
+                        dane_wyj.nready++;
+                        
+                        tab_prawdy[a]=1;
+                        puts("Watek czwarty wykryl slowo.");
+                        
+                        pthread_cond_signal(&dane_wyj.cond);
+                        pthread_mutex_unlock(&dane_wyj.mutex);//KONIEC SEKCJI KRYTYCZNEJ
+                        sleep(1);
+                        break;
+                    }  
+                }
+                free(nowe_slowo);
+            
+        }
+    }
+    pthread_exit(NULL);       
+}
+
+
+
+
+void *watek_5()
+{
+
+    char znak_pom;
+    char tab_pom[3];
+    char kod_md5[33];
+    char *nowe_slowo;
+    int sprawdzenie=1;
+    int dl_slowa;
+    
+    while(praca)
+    {
+        for(int a=0; a<L_SLOW_SLOWNIK; a++)
+        { 
+            for(int c=0; c<1000; c++)
+            {
+                for(int d=0; d<L_SLOW_SLOWNIK;d++)
+                {
+                    if(c<10)
+                        dl_slowa=strlen(dane_wej.tab_slow_wej[a])+2+strlen(dane_wej.tab_slow_wej[d]);
+                    else if(c<100)
+                        dl_slowa=strlen(dane_wej.tab_slow_wej[a])+3+strlen(dane_wej.tab_slow_wej[d]);
+                    else
+                        dl_slowa=strlen(dane_wej.tab_slow_wej[a])+4+strlen(dane_wej.tab_slow_wej[d]);
+
+                    nowe_slowo=(char*)calloc(dl_slowa, sizeof(char));
+
+
+                    strcat(nowe_slowo,dane_wej.tab_slow_wej[a]);
+                
+                    sprintf(tab_pom,"%d",c);
+                    strcat(nowe_slowo,tab_pom);
+                    strcat(nowe_slowo,dane_wej.tab_slow_wej[d]);
+
+                    koduj_MD5(nowe_slowo, kod_md5);
+                    
+                    //printf("Wygenerowane slowo %s, kod to: %s .\n",nowe_slowo,kod_md5);
+                    //sleep(1);
+                    for(int b=0; b<L_HASEL_MD5; b++)
+                    {
+                        
+                        sprawdzenie=strncmp(kod_md5, dane_wej.tab_MD5_wej[b],32);//ZWRACA 0 JESLI LANCUCHY SA TAKIE SAME
+                        //printf("Wygenerowane slowo %s, kod to: %s, kod ze slownika to: %s, warosc sprawdzenia to %d.\n",nowe_slowo,kod_md5,dane_wej.tab_MD5_wej[b],sprawdzenie);
+                        //sleep(1);
+                        
+                        if(sprawdzenie==0)
+                        {   
+                            pthread_mutex_lock(&dane_wyj.mutex); //POCZATEK SEKCJI KRYTYCZNEJ
+                            strncpy(dane_wyj.tab_slow_wyj[dane_wyj.licznik],nowe_slowo,strlen(nowe_slowo));
+                            strncpy(dane_wyj.tab_MD5_wyj[dane_wyj.licznik],kod_md5, strlen(kod_md5));
+                            //printf("Znaleziono slowo: %s i kod: %s .\n",dane_wyj.tab_slow_wyj[dane_wyj.licznik], dane_wyj.tab_MD5_wyj[dane_wyj.licznik]); 
+                            puts("Watek piaty wykryl slowo.");
+                            dane_wyj.nready++;
+                            
+                            //tab_prawdy[a]=1;
+                            pthread_cond_signal(&dane_wyj.cond);
+                            pthread_mutex_unlock(&dane_wyj.mutex);//KONIEC SEKCJI KRYTYCZNEJ
+                            sleep(1);
+                            break;
+                        }  
+                    }
+                    free(nowe_slowo);
+                }
+            }
+        }
+    }
+    pthread_exit(NULL);       
+}
+
+
+
 
  void *konsument(void *dane) 
 {
@@ -418,7 +521,6 @@ void *watek_3(void * dane)
         dane_wyj.licznik++;
         pthread_mutex_unlock(&dane_wyj.mutex);
     }
-    
     pthread_exit(NULL);
 }
 
@@ -439,13 +541,4 @@ void sighandler(int signum)
        free(dane_wej.tab_slow_wej[i]); 
     }
    exit(1);
-
-    //pthread_attr_destroy(&attr);
-    //pthread_mutex_destroy(&mutex_1);
-    //pthread_mutex_destroy(&dane_wyj.mutex);
-    //pthread_cond_destroy(&dane_wyj.cond);
-    //pthread_exit (NULL);
-
-    
-
 }
