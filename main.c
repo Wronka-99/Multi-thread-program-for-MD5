@@ -10,7 +10,7 @@
 
 #define SIZE_MD5 35
 #define L_HASEL_MD5 441
-#define L_SLOW_SLOWNIK 1000
+#define L_SLOW_SLOWNIK 10000
 #define DL_SLOWA 32
 #define NUM_THREADS  6
 
@@ -38,6 +38,9 @@ int count=0;
 char tab_prawdy[L_SLOW_SLOWNIK]={0};
 pthread_mutex_t mutex_1;
 pthread_t threads[NUM_THREADS];
+FILE *slownik;
+FILE *hasla_MD5;
+
 
 void sighandler(int signum);
 void koduj_MD5(char *slowo_pobrane, char kod[33]);
@@ -55,8 +58,7 @@ void *konsument(void *dane);
  int main(int argc, char *argv[])
  {
      //############## ZMIENNE ############## 
-     FILE *slownik;
-     FILE *hasla_MD5;
+
      char tab_pom[DL_SLOWA];
      char tab_pom2[SIZE_MD5];
      char *tmp_wsk;
@@ -167,6 +169,8 @@ void *konsument(void *dane);
  //######################################################  
 
 
+
+//FUNKCJA TWORZACA KOD MD5
  void koduj_MD5(char *slowo_pobrane, char kod[33])
  {
     EVP_MD_CTX *mdctx; //tworzenie struktury ktora zawiera rodzaj kodowania
@@ -189,8 +193,11 @@ void *konsument(void *dane);
         sprintf(kod+2*i,"%02X",znak_pom & 0xff);
     }
  }
+//######################################
 
 
+
+//WATEK DODAJACY NA POCZATEK SLOWA LICZBE
 void *watek_1()
 {
 
@@ -251,10 +258,10 @@ void *watek_1()
     }
     pthread_exit(NULL);       
 }
+//######################################
 
 
-
-
+//WATEK SPRAWDZAJACY SLOWA ZE SLOWNIKA BEZ ZADNYCH ZMIAN
 void *watek_2()
 {
    
@@ -306,7 +313,11 @@ void *watek_2()
     }
     pthread_exit(NULL);
 }
- 
+ //######################################
+
+
+
+ //WATEK DODAJACY LICZBE NA KONIEC SLOWA
 void *watek_3()
 {
 
@@ -368,8 +379,11 @@ void *watek_3()
     }
     pthread_exit(NULL);       
 }
+//######################################
 
 
+
+//WATEK ZAMIENIAJACY MALE LITERY NA DUZE
 void *watek_4()
 {
 
@@ -427,10 +441,10 @@ void *watek_4()
     }
     pthread_exit(NULL);       
 }
+//######################################
 
 
-
-
+//WATEK LACZACY DWA SLOWA, POMIEDZY KTORYMI ZNAJDUJE SIE LICZBA
 void *watek_5()
 {
 
@@ -499,10 +513,10 @@ void *watek_5()
     }
     pthread_exit(NULL);       
 }
+//######################################
 
 
-
-
+//WATEK KONSUMENTA ODPOWIEDZIAILNY ZA WYPISANIE ZNALEZIONEGO SLOWA NA BIEZACO
  void *konsument(void *dane) 
 {
     struct dane_wyjsciowe* info = (struct dane_wyjsciowe*)dane;
@@ -523,9 +537,11 @@ void *watek_5()
     }
     pthread_exit(NULL);
 }
+//######################################
 
 
 
+//PRZECHWYTYWANIE SYGNALU I WYPISYWANIE WSZYSTKICH ZNALEZIONYCH SLOW
 void sighandler(int signum) 
 {
    printf("Przechwycono sygnal %d, konczenie pracy.\n", signum);
@@ -540,5 +556,10 @@ void sighandler(int signum)
     {
        free(dane_wej.tab_slow_wej[i]); 
     }
+
+    fclose(slownik);
+    fclose(hasla_MD5);
+
    exit(1);
 }
+//######################################
